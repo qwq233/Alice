@@ -80,6 +80,31 @@ We don't want a better chatbot. We want an entity that can:
 
 > The full vision — nine scenarios, interaction primitives, ethical boundaries — is documented internally in our goal specification. What you see here is a living system pursuing that vision.
 
+### Alice in the Wild
+
+<table>
+<tr align="center">
+<th>💬 Group Banter</th>
+<th>🔒 Security Alert</th>
+<th>🌏 Sharing Discoveries</th>
+</tr>
+<tr>
+<td><img src=".github/screenshots/group-banter.png" alt="Group banter — Alice jokes about pocket money" /></td>
+<td><img src=".github/screenshots/security-alert-forward.png" alt="Security alert — Alice forwards and warns about trojans" /></td>
+<td><img src=".github/screenshots/nasa-share.png" alt="NASA article — Alice shares because the place shares her name" /></td>
+</tr>
+<tr align="center">
+<th>📰 Forwarding with Opinions</th>
+<th>😢 Emotional Empathy</th>
+<th>💕 Private Chat</th>
+</tr>
+<tr>
+<td><img src=".github/screenshots/channel-forward-opinion.png" alt="Channel forward — Alice reads an article and shares her own take" /></td>
+<td><img src=".github/screenshots/emotional-sticker.png" alt="Emotional response — Alice gets upset and sends sticker" /></td>
+<td><img src=".github/screenshots/private-empathy.png" alt="Private chat — Alice senses something is wrong and reaches out" /></td>
+</tr>
+</table>
+
 ## Field-Validated
 
 Alice is not a proof-of-concept. She has been running 24/7 on real Telegram accounts, in real conversations with real people — across private chats, group chats, and supergroups. The pressure field model has been validated through simulation experiments driven by Telegram chat export data spanning 1,000+ days of conversation history.
