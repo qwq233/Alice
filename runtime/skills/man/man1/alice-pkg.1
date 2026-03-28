@@ -1,0 +1,49 @@
+.TH ALICE-PKG 1 "2026-03-12" "Alice Runtime" "Alice Commands"
+.SH NAME
+alice\-pkg \- Alice OS package manager
+.SH SYNOPSIS
+.B alice\-pkg
+search [QUERY]
+.br
+.B alice\-pkg
+install PACKAGE[@VERSION]
+.br
+.B alice\-pkg
+remove PACKAGE
+.br
+.B alice\-pkg
+upgrade [PACKAGE]
+.br
+.B alice\-pkg
+rollback PACKAGE
+.br
+.B alice\-pkg
+list
+.SH DESCRIPTION
+Manage Skill packages: search, install, remove, upgrade, and rollback.
+All mutating operations are executed inside the engine process via Engine API.
+.SH COMMANDS
+.TP
+.B search [QUERY]
+Search available skills in the remote store. Omit QUERY to list all.
+.TP
+.B install PACKAGE[@VERSION]
+Install a skill package. Optionally pin a specific version.
+.TP
+.B remove PACKAGE
+Uninstall a skill package.
+.TP
+.B upgrade [PACKAGE]
+Upgrade a specific package, or all installed packages if none specified.
+.TP
+.B rollback PACKAGE
+Roll back a package to its previous version.
+.TP
+.B list
+List all installed skill packages.
+.SH SEE ALSO
+.BR irc (1),
+.BR self (1),
+.BR engine (1),
+.BR ctl (1),
+.BR ask (1)
