@@ -60,7 +60,9 @@ The approach is inspired by physics rather than ethology. Instead of specifying 
 - **Non-Quiescence** — as long as open commitments or active relationships exist, aggregate pressure grows super-linearly, ensuring Alice *cannot* fall permanently silent
 - **Structural Homeostasis** — built-in negative feedback prevents pressure divergence, producing natural rhythm as a corollary
 
-No intent detection. No slot filling. No state machines. Just physics.
+No intent detection. No slot filling. No state machines. No tool-calling required. Just physics.
+
+> **Runs on small models.** Alice does not require tool-calling support from the LLM. She generates shell scripts directly — any OpenAI-compatible chat completion endpoint works, including Gemini 2.5 Flash, DeepSeek, and other cost-effective models.
 
 ## What We Actually Want
 
@@ -294,10 +296,17 @@ Alice didn't come from nowhere. The pressure field model and companion architect
 - [**Voyager**](https://github.com/MineDojo/Voyager) — Embodied lifelong learning agent. Code-as-Skill pattern and progressive disclosure of action space.
 - [**mtcute**](https://github.com/mtcute/mtcute) — The MTProto client that makes Alice's Telegram existence possible.
 
+**Open-Source Projects We Studied** (design inspiration only, not code dependency)
+
+- [**nanobot**](https://github.com/HKUDS/nanobot) `MIT` — Ultra-lightweight companion architecture. Minimalist design philosophy reference.
+- [**PageIndex**](https://github.com/VectifyAI/PageIndex) `MIT` — Reasoning-based RAG without vector embeddings. Informed our conversation-context retrieval approach.
+- [**nanoclaw**](https://github.com/qwibitai/nanoclaw) `MIT` — Lightweight alternative companion. Anthropic Agents SDK usage patterns.
+- [**AstrBot**](https://github.com/AstrBotDevs/AstrBot) `AGPL-3.0` — Multi-platform IM bot with pipeline architecture, plugin marketplace, and Agent sandbox. Design study only (AGPL license).
+
 **Ancestor Projects**
 
 Alice's pressure field model evolved from two predecessor projects by the same author:
-- A **narrative dynamics paper** — graph-theoretic state management (G=(V,E,φ)), priority function families, Laplacian propagation, and the tanh(P/κ) saturation mapping.
+- [**Narrative Physics**](https://blog.dianas.cyou/2026/02/06/ai-roleplay-narrative-engine/) — The theoretical blog post that started it all. Graph-theoretic state management (G=(V,E,φ)), priority function families, Laplacian propagation, and the tanh(P/κ) saturation mapping.
 - A **narrative engine** (production system) — the Mod architecture (defineMod/contribute/handle), QuickJS sandbox execution, and the Storyteller context assembly pattern.
 
 ## Star History
