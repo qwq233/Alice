@@ -203,21 +203,15 @@ The whole system runs on a tick loop. Every tick, the pressure field evolves. Wh
 
 ```bash
 git clone --recurse-submodules https://github.com/LlmKira/alice.git
-cd alice/runtime
-
-pnpm install
-cp .env.example .env   # configure Telegram session + LLM endpoint
-pnpm run db:migrate
-pnpm run dev           # first run: interactive Telegram login
+cd alice
+bash setup.sh
 ```
 
-After login, use pm2 for production:
+`setup.sh` checks dependencies, walks you through configuration interactively, and handles the first Telegram login. That's it.
 
-```bash
-pm2 start ecosystem.config.cjs   # starts runtime + wd-tagger + anime-classify
-```
+**[Full deployment guide →](docs/deployment.md)** — manual setup, auxiliary services, Docker sandbox, systemd hardening, troubleshooting.
 
-**[Full deployment guide →](docs/deployment.md)** — Telegram credentials, LLM setup, auxiliary services, systemd hardening, troubleshooting.
+> **Note:** Do not run `pnpm run db:migrate` separately — Alice migrates automatically on first start.
 
 ### Simulation
 
