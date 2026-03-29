@@ -1,3 +1,5 @@
+<img src=".github/banner.png" width="100%" alt="Project Alice — IAUS 效用人工仿生意识" />
+
 > [!CAUTION]
 > This project was **designed, coded, tested, and documented entirely by AI agents**. The human author directed the vision and made decisions, but does not have the capacity to maintain this codebase alone — it has grown far too complex. Contributions and forks are welcome, but please understand the maintenance reality before depending on this project.
 
