@@ -84,18 +84,11 @@ cd ../services/anime-classify && uv sync
 cd ../wd14-tagger-server && pdm install
 ```
 
-## 6. Database
+## 6. First Run (Interactive Login + Auto Migration)
 
-```bash
-cd runtime
-pnpm run db:migrate
-```
+> **Do not run `pnpm run db:migrate` separately.** Alice uses a custom SQLite FTS5 tokenizer (`better_trigram`) that must be loaded by the application itself before migrations run. Running `drizzle-kit migrate` directly will fail with `no such tokenizer: better_trigram`. Just start Alice — she handles migration automatically on startup.
 
-This creates `alice.db` (SQLite) with all required tables.
-
-## 7. First Run (Interactive Login)
-
-The first time Alice starts, she needs to authenticate with Telegram. This is interactive — you'll receive a login code on Telegram.
+The first time Alice starts, she needs to authenticate with Telegram. This is interactive — you'll receive a login code.
 
 ```bash
 cd runtime
@@ -104,9 +97,9 @@ pnpm run dev
 
 Follow the prompts:
 1. Enter the verification code sent to your Telegram
-2. If you have 2FA enabled, enter your password
+2. If you have 2FA enabled, enter your cloud password
 
-After successful login, a session file is created. Subsequent starts are automatic.
+Alice automatically creates `alice.db` and runs migrations before starting. After successful login, a session file is saved — subsequent starts are fully automatic.
 
 ## 8. Production Setup (pm2)
 
@@ -220,6 +213,10 @@ The systemd unit includes security hardening (PrivateTmp, ProtectSystem=strict, 
 All optional — Alice works without them, just with reduced capabilities.
 
 ## Troubleshooting
+
+### "no such tokenizer: better_trigram"
+
+You ran `pnpm run db:migrate` directly — don't. Alice loads the FTS5 tokenizer extension before running migrations. Use `pnpm run dev` instead, which does both automatically.
 
 ### "AUTH_KEY_UNREGISTERED" or session errors
 

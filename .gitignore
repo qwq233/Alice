@@ -25,6 +25,7 @@ simulation/testdata/
 # Environment
 .env
 .env.*
+!**/.env.example
 
 # Node
 node_modules/
