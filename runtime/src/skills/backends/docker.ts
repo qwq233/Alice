@@ -27,6 +27,9 @@ const SESSION_SIGNATURE_LABEL = "alice.sandbox.signature";
 const SESSION_PREFIX = "alice-sbx";
 const DEFAULT_MAX_BUFFER = 1024 * 1024;
 const ALLOW_RUNC_FALLBACK = process.env.ALICE_SANDBOX_ALLOW_RUNC_FALLBACK !== "false";
+// Node execFile 会拒绝含 NUL 的参数；另外 ESC / backspace 这类控制字符也会污染 docker args。
+// 这里在 Docker 边界统一清洗所有即将进入 execFile 的字符串。
+const UNSAFE_ARG_CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 
 export const DockerIsolationSchema = [
   "container",
@@ -130,13 +133,21 @@ interface DockerInspectState {
 
 const sessionLocks = new Map<string, Promise<DockerSessionSpec>>();
 
+function sanitizeExecArg(value: string): string {
+  return value.replace(UNSAFE_ARG_CONTROL_RE, "");
+}
+
+function sanitizeExecArgs(args: string[]): string[] {
+  return args.map(sanitizeExecArg);
+}
+
 /**
  * 构建 docker run 参数数组（不含 "docker" 本身）。
  *
  * 导出供测试验证命令构建正确性。
  */
 export function buildDockerArgs(opts: DockerExecOptions): string[] {
-  const cmd = interpolateShell(opts.command, opts.params);
+  const cmd = sanitizeExecArg(interpolateShell(opts.command, opts.params));
   const args: string[] = [
     "run",
     "--rm",
@@ -144,14 +155,14 @@ export function buildDockerArgs(opts: DockerExecOptions): string[] {
     ...buildDockerExecConfig(opts),
   ];
   if (opts.cwd) {
-    args.push("-w", opts.cwd);
+    args.push("-w", sanitizeExecArg(opts.cwd));
   }
   args.push(opts.image, CONTAINER_SHELL, "-c", cmd);
   if (opts.args?.length) {
-    args.push("alice-docker-cmd", ...opts.args);
+    args.push("alice-docker-cmd", ...sanitizeExecArgs(opts.args));
   }
 
-  return args;
+  return sanitizeExecArgs(args);
 }
 
 export function buildDockerCreateArgs(
@@ -159,7 +170,7 @@ export function buildDockerCreateArgs(
   sessionName: string,
   signature: string,
 ): string[] {
-  return [
+  return sanitizeExecArgs([
     "create",
     "--name",
     sessionName,
@@ -171,24 +182,24 @@ export function buildDockerCreateArgs(
     opts.image,
     SESSION_ENTRYPOINT,
     ...SESSION_ENTRYPOINT_ARGS,
-  ];
+  ]);
 }
 
 export function buildDockerExecArgs(opts: DockerExecOptions, sessionName: string): string[] {
-  const cmd = interpolateShell(opts.command, opts.params);
+  const cmd = sanitizeExecArg(interpolateShell(opts.command, opts.params));
   const args = ["exec", ...buildDockerExecConfig(opts)];
 
   // 工作目录
   if (opts.cwd) {
-    args.push("-w", opts.cwd);
+    args.push("-w", sanitizeExecArg(opts.cwd));
   }
 
   args.push(sessionName, CONTAINER_SHELL, "-c", cmd);
   if (opts.args?.length) {
-    args.push("alice-docker-cmd", ...opts.args);
+    args.push("alice-docker-cmd", ...sanitizeExecArgs(opts.args));
   }
 
-  return args;
+  return sanitizeExecArgs(args);
 }
 
 function buildDockerContainerFlags(opts: DockerExecOptions): string[] {
@@ -205,7 +216,7 @@ function buildDockerContainerFlags(opts: DockerExecOptions): string[] {
   ];
 
   for (const mount of profile.tmpfs) {
-    args.push("--tmpfs", mount);
+    args.push("--tmpfs", sanitizeExecArg(mount));
   }
 
   if (opts.enginePort) {
@@ -216,18 +227,18 @@ function buildDockerContainerFlags(opts: DockerExecOptions): string[] {
     for (const mount of opts.extraMounts) {
       const target = mount.target ?? mount.source;
       const suffix = mount.readOnly === false ? "" : ":ro";
-      args.push("-v", `${mount.source}:${target}${suffix}`);
+      args.push("-v", sanitizeExecArg(`${mount.source}:${target}${suffix}`));
     }
   }
 
-  return args;
+  return sanitizeExecArgs(args);
 }
 
 function buildDockerExecConfig(opts: DockerExecOptions): string[] {
-  const args: string[] = ["-e", `ALICE_SKILL=${opts.skillName}`];
+  const args: string[] = ["-e", sanitizeExecArg(`ALICE_SKILL=${opts.skillName}`)];
 
   if (opts.enginePort) {
-    args.push("-e", `ALICE_ENGINE_URL=http://host.docker.internal:${opts.enginePort}`);
+    args.push("-e", sanitizeExecArg(`ALICE_ENGINE_URL=http://host.docker.internal:${opts.enginePort}`));
   }
 
   if (opts.env) {
@@ -235,11 +246,11 @@ function buildDockerExecConfig(opts: DockerExecOptions): string[] {
       // ALICE_ENGINE_URL / ALICE_SKILL 由本函数统一管理，
       // 跳过调用方 env 中的同名键以防宿主路径覆盖容器路径
       if (key === "ALICE_ENGINE_URL" || key === "ALICE_SKILL") continue;
-      args.push("-e", `${key}=${value}`);
+      args.push("-e", sanitizeExecArg(`${key}=${value}`));
     }
   }
 
-  return args;
+  return sanitizeExecArgs(args);
 }
 
 function getDockerSessionSpec(opts: DockerExecOptions): DockerSessionSpec {

@@ -119,11 +119,20 @@ function trimTrailingPeriod(s: string): string {
   return s.replace(/(?<![.。…])([.。])$/, "");
 }
 
+/** 将模型错误输出的转义换行（`\\n` / `\\r\\n` / `\\r`）恢复为真实换行。 */
+function normalizeEscapedNewlines(s: string): string {
+  return s.replace(/\\r\\n|\\n|\\r/g, (m) => {
+    if (m === "\\r\\n") return "\r\n";
+    if (m === "\\r") return "\r";
+    return "\n";
+  });
+}
+
 /** 清洗 LLM 输出文本：剥离泄漏的注解标记 + 句尾句号 + 引号规范化 + 截断。 */
 export function sanitizeOutgoingText(s: string, max = 4096): string {
   return normalizeQuotes(
     trimTrailingPeriod(
-      s
+      normalizeEscapedNewlines(s)
         .replace(KEYWORD_ANNOTATION_RE, "")
         .replace(REACTION_ANNOTATION_RE, "")
         .replace(PAREN_ANNOTATION_RE, "")

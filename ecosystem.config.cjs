@@ -12,11 +12,13 @@ module.exports = {
       cwd: "./runtime",
       script: "pnpm",
       args: "run dev",
-      autorestart: false,
+      autorestart: true,
       watch: false,
       env: {
         NODE_ENV: "development",
       },
+      restart_delay: 3000,
+      max_restarts: 10,
     },
     {
       name: "wd-tagger",
