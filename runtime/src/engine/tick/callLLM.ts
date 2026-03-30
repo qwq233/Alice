@@ -40,7 +40,7 @@ const SESSION_REUSE_ENABLED = process.env.LLM_SESSION_REUSE === "true";
 const TICK_STEP_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["script", "afterward"],
+  required: ["script", "afterward", "residue"],
   properties: {
     script: { type: "string", minLength: 1 },
     afterward: {
@@ -48,20 +48,45 @@ const TICK_STEP_JSON_SCHEMA = {
       enum: ["done", "waiting_reply", "watching", "fed_up", "cooling_down"],
     },
     residue: {
-      type: "object",
-      additionalProperties: false,
-      required: ["feeling"],
-      properties: {
-        feeling: {
-          type: "string",
-          enum: ["unresolved", "interrupted", "curious", "settled"],
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["feeling", "toward", "reason"],
+          properties: {
+            feeling: {
+              type: "string",
+              enum: ["unresolved", "interrupted", "curious", "settled"],
+            },
+            toward: { type: ["string", "null"] },
+            reason: { type: ["string", "null"], maxLength: 200 },
+          },
         },
-        toward: { type: "string" },
-        reason: { type: "string", maxLength: 200 },
-      },
+        { type: "null" },
+      ],
     },
   },
 } as const;
+
+function normalizeResponsesPayload(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null) return payload;
+  const record = payload as Record<string, unknown>;
+  if (record.residue === null) {
+    return { ...record, residue: undefined };
+  }
+  if (typeof record.residue !== "object" || record.residue === null) {
+    return payload;
+  }
+  const residue = record.residue as Record<string, unknown>;
+  return {
+    ...record,
+    residue: {
+      ...residue,
+      toward: residue.toward ?? undefined,
+      reason: residue.reason ?? undefined,
+    },
+  };
+}
 
 function fingerprintSystemPrompt(system: string): string {
   return createHash("sha256").update(system).digest("hex");
@@ -126,7 +151,7 @@ async function tryCallTickLLMWithSession(
       throw new Error("Responses API returned empty output_text");
     }
 
-    const parsedJson = JSON.parse(outputText) as unknown;
+    const parsedJson = normalizeResponsesPayload(JSON.parse(outputText) as unknown);
     const parsed = TickStepSchema.safeParse(parsedJson);
     if (!parsed.success) {
       throw new Error(parsed.error.message);
