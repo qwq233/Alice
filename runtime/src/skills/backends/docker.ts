@@ -29,6 +29,7 @@ const DEFAULT_MAX_BUFFER = 1024 * 1024;
 const ALLOW_RUNC_FALLBACK = process.env.ALICE_SANDBOX_ALLOW_RUNC_FALLBACK !== "false";
 // Node execFile 会拒绝含 NUL 的参数；另外 ESC / backspace 这类控制字符也会污染 docker args。
 // 这里在 Docker 边界统一清洗所有即将进入 execFile 的字符串。
+// biome-ignore lint/suspicious/noControlCharactersInRegex: 需要在 execFile 边界剥离 NUL/控制字符
 const UNSAFE_ARG_CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 
 export const DockerIsolationSchema = [
@@ -238,7 +239,10 @@ function buildDockerExecConfig(opts: DockerExecOptions): string[] {
   const args: string[] = ["-e", sanitizeExecArg(`ALICE_SKILL=${opts.skillName}`)];
 
   if (opts.enginePort) {
-    args.push("-e", sanitizeExecArg(`ALICE_ENGINE_URL=http://host.docker.internal:${opts.enginePort}`));
+    args.push(
+      "-e",
+      sanitizeExecArg(`ALICE_ENGINE_URL=http://host.docker.internal:${opts.enginePort}`),
+    );
   }
 
   if (opts.env) {

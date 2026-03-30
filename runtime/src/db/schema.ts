@@ -216,6 +216,23 @@ export const modStates = sqliteTable("mod_states", {
 });
 
 /**
+ * Tick LLM session 持久化。
+ * 保存 Responses API previous_response_id，重启后继续复用 provider-side 上下文。
+ */
+export const llmSessions = sqliteTable(
+  "llm_sessions",
+  {
+    sessionKey: text("session_key").primaryKey(),
+    providerName: text("provider_name").notNull(),
+    model: text("model").notNull(),
+    systemFingerprint: text("system_fingerprint").notNull(),
+    previousResponseId: text("previous_response_id").notNull(),
+    updatedAtMs: integer("updated_at_ms").notNull(),
+  },
+  (t) => [index("idx_llm_sessions_updated_at").on(t.updatedAtMs)],
+);
+
+/**
  * 图节点（ADR-33 Phase 2: Write-Back Cache）。
  * 替代 graph_snapshots 的全量 JSON 序列化。
  */

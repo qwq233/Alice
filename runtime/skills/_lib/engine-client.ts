@@ -15,7 +15,7 @@ import { request } from "node:http";
 
 // ── Engine API 客户端 ──
 
-const TIMEOUT_MS = 6000;
+const TIMEOUT_MS = 20_000;
 
 /**
  * 底层请求函数。URL 缺失时返回 null（graceful degradation）。
@@ -54,16 +54,28 @@ function engineRequest(
         headers,
       },
       (res) => {
-        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-          res.resume(); // drain
-          reject(new Error(`Engine API returned ${res.statusCode} for ${method} ${path}`));
-          return;
-        }
         let data = "";
         res.on("data", (chunk: Buffer) => {
           data += chunk.toString();
         });
         res.on("end", () => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            let detail = "";
+            try {
+              const parsed = data
+                ? (JSON.parse(data) as { error?: unknown; message?: unknown })
+                : null;
+              const msg = parsed?.error ?? parsed?.message;
+              if (typeof msg === "string" && msg.trim()) detail = `: ${msg.trim()}`;
+              else if (data.trim()) detail = `: ${data.trim()}`;
+            } catch {
+              if (data.trim()) detail = `: ${data.trim()}`;
+            }
+            reject(
+              new Error(`Engine API returned ${res.statusCode} for ${method} ${path}${detail}`),
+            );
+            return;
+          }
           try {
             resolve(JSON.parse(data));
           } catch {
@@ -72,6 +84,7 @@ function engineRequest(
         });
       },
     );
+
     req.on("error", reject);
     req.setTimeout(TIMEOUT_MS, () => {
       req.destroy(new Error("Engine API timeout"));

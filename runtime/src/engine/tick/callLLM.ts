@@ -14,9 +14,17 @@
  * @see https://js.useinstructor.com/
  */
 
+import { createHash } from "node:crypto";
+
 import { validateScript } from "../../core/script-validator.js";
 import { writeAuditEvent } from "../../db/audit.js";
 import { getAvailableInstructor } from "../../llm/instructor-client.js";
+import {
+  buildTickSessionKey,
+  clearTickSession,
+  getReusableResponseId,
+  saveReusableResponseId,
+} from "../../llm/tick-session.js";
 import { withResilience } from "../../llm/resilience.js";
 import { normalizeScript, type TickStep, TickStepSchema } from "../../llm/schemas.js";
 import { createLogger } from "../../utils/logger.js";
@@ -25,6 +33,133 @@ const log = createLogger("tick/callLLM");
 
 /** instructor 验证重试次数（Zod 错误反馈 → LLM 自我修正）。 */
 const INSTRUCTOR_MAX_RETRIES = 2;
+
+/** 开关：启用 Responses API previous_response_id 复用，减少 system prompt 重发。 */
+const SESSION_REUSE_ENABLED = process.env.LLM_SESSION_REUSE === "true";
+
+const TICK_STEP_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["script", "afterward"],
+  properties: {
+    script: { type: "string", minLength: 1 },
+    afterward: {
+      type: "string",
+      enum: ["done", "waiting_reply", "watching", "fed_up", "cooling_down"],
+    },
+    residue: {
+      type: "object",
+      additionalProperties: false,
+      required: ["feeling"],
+      properties: {
+        feeling: {
+          type: "string",
+          enum: ["unresolved", "interrupted", "curious", "settled"],
+        },
+        toward: { type: "string" },
+        reason: { type: "string", maxLength: 200 },
+      },
+    },
+  },
+} as const;
+
+function fingerprintSystemPrompt(system: string): string {
+  return createHash("sha256").update(system).digest("hex");
+}
+
+async function tryCallTickLLMWithSession(
+  system: string,
+  user: string,
+  target: string | null,
+  voice: string,
+  temperature?: number,
+): Promise<TickStep | null> {
+  if (!SESSION_REUSE_ENABLED) return null;
+
+  const { openai, model, name, mode } = getAvailableInstructor();
+  if (mode !== "TOOLS") return null;
+
+  const systemFingerprint = fingerprintSystemPrompt(system);
+  const sessionKey = buildTickSessionKey({
+    providerName: name,
+    model,
+    target,
+    voice,
+  });
+  const previousResponseId = getReusableResponseId({
+    sessionKey,
+    providerName: name,
+    model,
+    systemFingerprint,
+  });
+
+  const input = previousResponseId
+    ? [{ role: "user" as const, content: user }]
+    : [
+        { role: "system" as const, content: system },
+        { role: "user" as const, content: user },
+      ];
+
+  try {
+    const response = await withResilience(
+      () =>
+        openai.responses.create({
+          model,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          input,
+          temperature: temperature ?? 0.7,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "TickStep",
+              schema: TICK_STEP_JSON_SCHEMA,
+              strict: true,
+            },
+          },
+        }),
+      {},
+      name,
+    );
+
+    const outputText = (response as { output_text?: string }).output_text?.trim() ?? "";
+    if (!outputText) {
+      throw new Error("Responses API returned empty output_text");
+    }
+
+    const parsedJson = JSON.parse(outputText) as unknown;
+    const parsed = TickStepSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      throw new Error(parsed.error.message);
+    }
+
+    const responseId = (response as { id?: string }).id;
+    if (responseId) {
+      saveReusableResponseId({
+        sessionKey,
+        providerName: name,
+        model,
+        systemFingerprint,
+        previousResponseId: responseId,
+      });
+    }
+
+    log.debug("Tick LLM used response session reuse", {
+      provider: name,
+      target,
+      voice,
+      reused: !!previousResponseId,
+    });
+    return parsed.data;
+  } catch (e) {
+    clearTickSession(sessionKey);
+    log.warn("Responses session path failed, falling back to stateless instructor", {
+      provider: name,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
 
 /**
  * 调用 LLM 生成 TickStep（shell script + flow 信号）。
@@ -43,23 +178,34 @@ export async function callTickLLM(
   temperature?: number,
 ): Promise<TickStep | null> {
   try {
-    const { client, model, name } = getAvailableInstructor();
-
-    const extracted = await withResilience(
-      () =>
-        client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-          response_model: { schema: TickStepSchema, name: "TickStep" },
-          max_retries: INSTRUCTOR_MAX_RETRIES,
-          temperature: temperature ?? 0.7,
-        }),
-      {},
-      name,
+    const sessionExtracted = await tryCallTickLLMWithSession(
+      system,
+      user,
+      target,
+      voice,
+      temperature,
     );
+
+    const extracted =
+      sessionExtracted ??
+      (await (async () => {
+        const { client, model, name } = getAvailableInstructor();
+        return withResilience(
+          () =>
+            client.chat.completions.create({
+              model,
+              messages: [
+                { role: "system", content: system },
+                { role: "user", content: user },
+              ],
+              response_model: { schema: TickStepSchema, name: "TickStep" },
+              max_retries: INSTRUCTOR_MAX_RETRIES,
+              temperature: temperature ?? 0.7,
+            }),
+          {},
+          name,
+        );
+      })());
 
     const script = normalizeScript(extracted.script ?? "");
     const afterward = extracted.afterward;

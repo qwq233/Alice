@@ -21,6 +21,7 @@ import { loadConfig } from "./config.js";
 import { checkToolSurfaceCompleteness } from "./core/d3-completeness.js";
 import { createAliceDispatcher } from "./core/dispatcher.js";
 import { loadAllMods } from "./core/mod-loader.js";
+import { sanitizeOutgoingText } from "./core/sandbox-schemas.js";
 import { ALICE_HOME } from "./core/shell-executor.js";
 import { writeAuditEvent } from "./db/audit.js";
 import { closeDb, getDb, initDb } from "./db/connection.js";
@@ -418,18 +419,20 @@ async function main() {
     getTick: () => clock.tick,
     telegramSend: async ({ chatId, text, replyTo }) => {
       const rawChatId = typeof chatId === "number" ? chatId : Number(chatId);
+      const cleanText = sanitizeOutgoingText(text);
+      if (!cleanText) return { msgId: null };
       // Typing indicator + 自然延迟（对齐 action-executor 行为）。
       // irc say/reply 通过 Engine API 发送，不经过 action-executor 的 typing 管线，
       // 需要在此处补偿，否则对端看不到"正在输入"。
       try {
         await setTyping(client, rawChatId);
-        const charCount = [...text].length;
+        const charCount = [...cleanText].length;
         const delayMs = Math.min(Math.max(charCount * 80, 800), 8000);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       } catch {
         // typing 失败不阻断发送
       }
-      const msgId = await sendText(client, rawChatId, text, { replyToMsgId: replyTo });
+      const msgId = await sendText(client, rawChatId, cleanText, { replyToMsgId: replyTo });
       // 显式取消 typing 定时器（mtcute 5s 自动续发，不取消会残留）
       setTyping(client, rawChatId, true).catch(() => {});
       const graphId = ensureChannelId(`channel:${rawChatId}`);
@@ -437,8 +440,8 @@ async function main() {
         cacheOutgoingMsg(graphId, msgId);
       }
       if (graphId && G.has(graphId)) {
-        G.setDynamic(graphId, "last_outgoing_text", [...text].slice(0, 150).join(""));
-        dispatcher.dispatch("SEND_MESSAGE", { chatId: graphId, text, msgId });
+        G.setDynamic(graphId, "last_outgoing_text", [...cleanText].slice(0, 150).join(""));
+        dispatcher.dispatch("SEND_MESSAGE", { chatId: graphId, text: cleanText, msgId });
         dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
       }
       return { msgId: msgId ?? null };
@@ -483,21 +486,78 @@ async function main() {
       }
       const graphId = ensureChannelId(`channel:${rawChatId}`);
       const db = getDb();
-      // 多层解析：维度关键词 → emoji → raw fileId
-      let fileId: string | null = resolveLabel(db, keyword, graphId ?? undefined);
-      if (!fileId) fileId = resolveByEmoji(db, keyword, graphId ?? undefined);
-      if (!fileId && keyword.startsWith("CAACAgI")) fileId = keyword;
+      const resolveStickerFileId = (): string | null => {
+        let resolved: string | null = resolveLabel(db, keyword, graphId ?? undefined);
+        if (!resolved) resolved = resolveByEmoji(db, keyword, graphId ?? undefined);
+        if (!resolved && keyword.startsWith("CAACAg")) resolved = keyword;
+        return resolved;
+      };
+
+      let fileId = resolveStickerFileId();
       if (!fileId) {
         const available = getAvailableKeywords(db);
         throw new Error(`No sticker matches "${keyword}". Valid: ${available}`);
       }
-      const msgId = await sendSticker(client, rawChatId, fileId);
-      setTyping(client, rawChatId, true).catch(() => {});
-      if (msgId != null && graphId) {
-        cacheOutgoingMsg(graphId, msgId);
-        dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
+
+      try {
+        const msgId = await sendSticker(client, rawChatId, fileId);
+        setTyping(client, rawChatId, true).catch(() => {});
+        if (msgId != null && graphId) {
+          cacheOutgoingMsg(graphId, msgId);
+          dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
+        }
+        return { msgId: msgId ?? null };
+      } catch (err) {
+        const firstError = err instanceof Error ? err.message : String(err);
+        log.warn("telegramSticker failed, attempting palette refresh + single retry", {
+          chatId: rawChatId,
+          keyword,
+          graphId,
+          fileId: fileId.slice(0, 32),
+          error: firstError,
+        });
+
+        try {
+          await syncInstalledSets(client, db);
+        } catch (syncErr) {
+          log.warn("telegramSticker palette refresh failed", {
+            chatId: rawChatId,
+            keyword,
+            error: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
+
+        fileId = resolveStickerFileId();
+        if (!fileId) {
+          setTyping(client, rawChatId, true).catch(() => {});
+          const available = getAvailableKeywords(db);
+          throw new Error(
+            `Sticker refresh lost mapping for "${keyword}" after retry. Valid: ${available}`,
+          );
+        }
+
+        try {
+          const msgId = await sendSticker(client, rawChatId, fileId);
+          setTyping(client, rawChatId, true).catch(() => {});
+          if (msgId != null && graphId) {
+            cacheOutgoingMsg(graphId, msgId);
+            dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
+          }
+          log.info("telegramSticker retry succeeded after palette refresh", {
+            chatId: rawChatId,
+            keyword,
+            graphId,
+            fileId: fileId.slice(0, 32),
+          });
+          return { msgId: msgId ?? null };
+        } catch (retryErr) {
+          setTyping(client, rawChatId, true).catch(() => {});
+          const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          throw new Error(
+            `Sticker send failed for "${keyword}" (fileId=${fileId.slice(0, 24)}…, initial=${firstError}; retry=${retryMessage})`,
+          );
+        }
       }
-      return { msgId: msgId ?? null };
     },
     // TTS 语音消息：textToSpeech → sendVoice → fallback sendText
     telegramVoice: async ({ chatId, text, emotion, replyTo }) => {
@@ -568,7 +628,7 @@ async function main() {
       }
       // 附加评论：转发成功后，以 reply 形式发送评论
       let commentMsgId: number | null = null;
-      if (comment && comment.trim() && fwdMsgId != null) {
+      if (comment?.trim() && fwdMsgId != null) {
         commentMsgId =
           (await sendText(client, toChatId, comment, { replyToMsgId: fwdMsgId })) ?? null;
         if (commentMsgId != null && toGraphId) {

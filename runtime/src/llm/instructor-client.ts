@@ -24,12 +24,16 @@ const log = createLogger("instructor");
 interface InstructorEntry {
   name: string;
   model: string;
+  mode: "TOOLS" | "MD_JSON";
+  openai: OpenAI;
   client: ReturnType<typeof Instructor>;
 }
 
 export interface AvailableInstructor {
   client: ReturnType<typeof Instructor>;
+  openai: OpenAI;
   model: string;
+  mode: "TOOLS" | "MD_JSON";
   name: string;
 }
 
@@ -63,6 +67,8 @@ export function initInstructorClients(config: Config): void {
     return {
       name: pc.name,
       model: pc.model,
+      mode,
+      openai: oai,
       client: Instructor({ client: oai, mode }),
     };
   });
@@ -75,11 +81,23 @@ export function getAvailableInstructor(): AvailableInstructor {
   }
   for (const entry of _entries) {
     if (getBreakerState(entry.name) !== "open") {
-      return { client: entry.client, model: entry.model, name: entry.name };
+      return {
+        client: entry.client,
+        openai: entry.openai,
+        model: entry.model,
+        mode: entry.mode,
+        name: entry.name,
+      };
     }
   }
   const first = _entries[0];
-  return { client: first.client, model: first.model, name: first.name };
+  return {
+    client: first.client,
+    openai: first.openai,
+    model: first.model,
+    mode: first.mode,
+    name: first.name,
+  };
 }
 
 /** 重置（测试用）。 */

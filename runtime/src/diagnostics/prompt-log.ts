@@ -119,9 +119,8 @@ export function logPromptSnapshot(snapshot: PromptSnapshot): void {
       if (sb.errors.length > 0) {
         parts.push("### Errors", "");
         for (const e of sb.errors) {
-          parts.push(`- ❌ ${e}`);
+          parts.push("```text", e, "```", "");
         }
-        parts.push("");
       }
     }
 
