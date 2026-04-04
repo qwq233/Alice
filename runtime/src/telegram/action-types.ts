@@ -86,6 +86,8 @@ export interface ActionImplContext {
   youtubeApiKey: string;
   /** 时区偏移小时数（App Toolkit 使用）。默认 8（UTC+8）。 */
   timezoneOffset: number;
+  /** 是否发送 typing 状态。未显式提供时默认启用。 */
+  typingIndicatorEnabled?: boolean;
 }
 
 /** TTS 语音合成配置。 */

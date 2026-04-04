@@ -65,6 +65,8 @@ export interface Config {
   telegramApiId: number;
   telegramApiHash: string;
   telegramPhone: string;
+  /** 是否发送 Telegram typing 状态。默认关闭；设为 true 才启用 typing + 对应自然延迟。 */
+  telegramTypingIndicatorEnabled: boolean;
 
   // LLM
   /** D5: 多 provider fallback 链（ADR-123 §D5）。 */
@@ -317,6 +319,7 @@ export function loadConfig(): Config {
     telegramApiId: Number(process.env.TELEGRAM_API_ID ?? "0"),
     telegramApiHash: process.env.TELEGRAM_API_HASH ?? "",
     telegramPhone: process.env.TELEGRAM_PHONE ?? "",
+    telegramTypingIndicatorEnabled: process.env.TELEGRAM_TYPING_INDICATOR_ENABLED === "true",
 
     providers: parseProviders(),
     llmBaseUrl: process.env.LLM_BASE_URL ?? "https://api.openai.com/v1",

@@ -21,5 +21,6 @@ export function extractRuntimeConfig(config: Config): ActionRuntimeConfig {
     musicApiBaseUrl: config.musicApiBaseUrl,
     youtubeApiKey: config.youtubeApiKey,
     timezoneOffset: config.timezoneOffset,
+    typingIndicatorEnabled: config.telegramTypingIndicatorEnabled,
   };
 }

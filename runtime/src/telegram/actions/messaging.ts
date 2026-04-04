@@ -365,21 +365,25 @@ export const messagingActions: TelegramActionDef[] = [
 
       // Typing 延迟（impl 内自处理，不走 executor 的打字延迟）
       const rawId = ctx.parseChatId(dmChannelId);
-      try {
-        await setTyping(ctx.client, rawId);
-        const delayMs = Math.min(Math.max(text.length * 80, 800), 8000);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      } catch {
-        // typing 失败不阻断发送
+      if (ctx.typingIndicatorEnabled !== false) {
+        try {
+          await setTyping(ctx.client, rawId);
+          const delayMs = Math.min(Math.max(text.length * 80, 800), 8000);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        } catch {
+          // typing 失败不阻断发送
+        }
       }
 
       const msgId = await sendText(ctx.client, rawId, text);
 
       // 取消 typing
-      try {
-        await setTyping(ctx.client, rawId, true);
-      } catch {
-        // ignore
+      if (ctx.typingIndicatorEnabled !== false) {
+        try {
+          await setTyping(ctx.client, rawId, true);
+        } catch {
+          // ignore
+        }
       }
 
       // 图更新 + 事件分派（与 send_message 对齐）

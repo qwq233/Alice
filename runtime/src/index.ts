@@ -424,17 +424,21 @@ async function main() {
       // Typing indicator + 自然延迟（对齐 action-executor 行为）。
       // irc say/reply 通过 Engine API 发送，不经过 action-executor 的 typing 管线，
       // 需要在此处补偿，否则对端看不到"正在输入"。
-      try {
-        await setTyping(client, rawChatId);
-        const charCount = [...cleanText].length;
-        const delayMs = Math.min(Math.max(charCount * 80, 800), 8000);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      } catch {
-        // typing 失败不阻断发送
+      if (config.telegramTypingIndicatorEnabled) {
+        try {
+          await setTyping(client, rawChatId);
+          const charCount = [...cleanText].length;
+          const delayMs = Math.min(Math.max(charCount * 80, 800), 8000);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        } catch {
+          // typing 失败不阻断发送
+        }
       }
       const msgId = await sendText(client, rawChatId, cleanText, { replyToMsgId: replyTo });
       // 显式取消 typing 定时器（mtcute 5s 自动续发，不取消会残留）
-      setTyping(client, rawChatId, true).catch(() => {});
+      if (config.telegramTypingIndicatorEnabled) {
+        setTyping(client, rawChatId, true).catch(() => {});
+      }
       const graphId = ensureChannelId(`channel:${rawChatId}`);
       if (msgId != null && graphId) {
         cacheOutgoingMsg(graphId, msgId);
@@ -478,11 +482,13 @@ async function main() {
     telegramSticker: async ({ chatId, sticker: keyword }) => {
       const rawChatId = typeof chatId === "number" ? chatId : Number(chatId);
       // Typing indicator（sticker 也需要短暂的"正在输入"模拟自然感）
-      try {
-        await setTyping(client, rawChatId);
-        await new Promise((resolve) => setTimeout(resolve, 600));
-      } catch {
-        // typing 失败不阻断发送
+      if (config.telegramTypingIndicatorEnabled) {
+        try {
+          await setTyping(client, rawChatId);
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        } catch {
+          // typing 失败不阻断发送
+        }
       }
       const graphId = ensureChannelId(`channel:${rawChatId}`);
       const db = getDb();
@@ -501,7 +507,9 @@ async function main() {
 
       try {
         const msgId = await sendSticker(client, rawChatId, fileId);
-        setTyping(client, rawChatId, true).catch(() => {});
+        if (config.telegramTypingIndicatorEnabled) {
+          setTyping(client, rawChatId, true).catch(() => {});
+        }
         if (msgId != null && graphId) {
           cacheOutgoingMsg(graphId, msgId);
           dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
@@ -529,7 +537,9 @@ async function main() {
 
         fileId = resolveStickerFileId();
         if (!fileId) {
-          setTyping(client, rawChatId, true).catch(() => {});
+          if (config.telegramTypingIndicatorEnabled) {
+            setTyping(client, rawChatId, true).catch(() => {});
+          }
           const available = getAvailableKeywords(db);
           throw new Error(
             `Sticker refresh lost mapping for "${keyword}" after retry. Valid: ${available}`,
@@ -538,7 +548,9 @@ async function main() {
 
         try {
           const msgId = await sendSticker(client, rawChatId, fileId);
-          setTyping(client, rawChatId, true).catch(() => {});
+          if (config.telegramTypingIndicatorEnabled) {
+            setTyping(client, rawChatId, true).catch(() => {});
+          }
           if (msgId != null && graphId) {
             cacheOutgoingMsg(graphId, msgId);
             dispatcher.dispatch("DECLARE_ACTION", { target: graphId });
@@ -551,7 +563,9 @@ async function main() {
           });
           return { msgId: msgId ?? null };
         } catch (retryErr) {
-          setTyping(client, rawChatId, true).catch(() => {});
+          if (config.telegramTypingIndicatorEnabled) {
+            setTyping(client, rawChatId, true).catch(() => {});
+          }
           const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
           throw new Error(
             `Sticker send failed for "${keyword}" (fileId=${fileId.slice(0, 24)}…, initial=${firstError}; retry=${retryMessage})`,
@@ -592,10 +606,12 @@ async function main() {
           ? (emotion as import("./llm/tts.js").TTSEmotion)
           : undefined;
       // Typing indicator
-      try {
-        await setTyping(client, rawChatId);
-      } catch {
-        /* typing 失败不阻断 */
+      if (config.telegramTypingIndicatorEnabled) {
+        try {
+          await setTyping(client, rawChatId);
+        } catch {
+          /* typing 失败不阻断 */
+        }
       }
       const audioBuffer = await textToSpeech(text.slice(0, 1000), ttsConfig, validEmotion);
       let sentMsgId: number | undefined;
@@ -607,7 +623,9 @@ async function main() {
         sentMsgId =
           (await sendText(client, rawChatId, text, { replyToMsgId: replyTo })) ?? undefined;
       }
-      setTyping(client, rawChatId, true).catch(() => {});
+      if (config.telegramTypingIndicatorEnabled) {
+        setTyping(client, rawChatId, true).catch(() => {});
+      }
       if (sentMsgId != null && graphId) {
         cacheOutgoingMsg(graphId, sentMsgId);
         dispatcher.dispatch("SEND_MESSAGE", {

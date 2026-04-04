@@ -31,6 +31,7 @@ export interface ActionRuntimeConfig {
   musicApiBaseUrl: string;
   youtubeApiKey: string;
   timezoneOffset: number;
+  typingIndicatorEnabled?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

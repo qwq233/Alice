@@ -1067,6 +1067,7 @@ describe("sendDmImpl", () => {
       interactionCount: number;
       tier: number;
       chatType: string;
+      typingIndicatorEnabled: boolean;
     }>,
   ): ActionImplContext {
     const opts = {
@@ -1075,6 +1076,7 @@ describe("sendDmImpl", () => {
       interactionCount: 5,
       tier: 150,
       chatType: "private",
+      typingIndicatorEnabled: true,
       ...overrides,
     };
     const mockG = {
@@ -1125,6 +1127,7 @@ describe("sendDmImpl", () => {
       musicApiBaseUrl: "",
       youtubeApiKey: "",
       timezoneOffset: 8,
+      typingIndicatorEnabled: opts.typingIndicatorEnabled,
     } as unknown as ActionImplContext;
   }
 
@@ -1199,6 +1202,13 @@ describe("sendDmImpl", () => {
     expect(actions.setTyping).toHaveBeenCalledTimes(2);
     expect(actions.setTyping).toHaveBeenCalledWith(ctx.client, 12345);
     expect(actions.setTyping).toHaveBeenCalledWith(ctx.client, 12345, true);
+  });
+
+  it("关闭 typing 设置时直接发送且不调用 typing", async () => {
+    ctx = createDmContext({ typingIndicatorEnabled: false });
+    await impl(ctx, { who: "~12345", text: "hi" });
+    expect(actions.setTyping).not.toHaveBeenCalled();
+    expect(actions.sendText).toHaveBeenCalledWith(ctx.client, 12345, "hi");
   });
 
   it("DM channel 不在图中时跳过 chat_type 检查和 setDynamic", async () => {
