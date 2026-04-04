@@ -9,6 +9,7 @@ import { CHANNEL_PREFIX, CONTACT_PREFIX } from "../graph/constants.js";
 import type { ChatType, DunbarTier } from "../graph/entities.js";
 import { WorldModel } from "../graph/world-model.js";
 import { createLogger } from "../utils/logger.js";
+import { getIgnoredTelegramPeerReason } from "./session-filters.js";
 
 const log = createLogger("bootstrap");
 
@@ -40,6 +41,19 @@ export async function buildInitialGraph(client: TelegramClient): Promise<WorldMo
     // 判断 peer 类型：User 是私聊，Chat 是群/频道
     const isUser = peer instanceof User;
     const isChat = peer instanceof Chat;
+
+    const ignoreReason = getIgnoredTelegramPeerReason(
+      {
+        peerId: peer.id,
+        kind: isUser ? "user" : "chat",
+        isBot: isUser ? peer.isBot : false,
+      },
+      String(self.id),
+    );
+    if (ignoreReason) {
+      log.info("Skipped filtered Telegram dialog", { chatId, reason: ignoreReason });
+      continue;
+    }
 
     let chatType: ChatType;
     if (isUser) {

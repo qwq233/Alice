@@ -244,6 +244,23 @@ describe("sendMessageImpl", () => {
     await impl(ctx, { chatId: 1, text: "hi" });
     expect(ctx.G.setDynamic).not.toHaveBeenCalled();
   });
+
+  it("目标为频道时拦截 send_message", async () => {
+    (ctx.G.getChannel as ReturnType<typeof vi.fn>).mockReturnValue({
+      entity_type: "channel",
+      unread: 0,
+      tier_contact: 500,
+      chat_type: "channel",
+      pending_directed: 0,
+      last_directed_ms: 0,
+    });
+
+    const result = await impl(ctx, { chatId: 100, text: "hi" });
+
+    expect(result).toEqual({ success: false, error: "cannot speak in channel; use publish_channel" });
+    expect(actions.sendText).not.toHaveBeenCalled();
+    expect(ctx.dispatcher.dispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe("markReadImpl", () => {

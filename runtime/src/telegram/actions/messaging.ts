@@ -45,6 +45,16 @@ export const messagingActions: TelegramActionDef[] = [
       const rawId = ctx.parseChatId(args.chatId);
       const graphId = ctx.ensureGraphId(args.chatId);
 
+      // 频道是广播面，不接受普通 send_message。
+      // 需要主动发频道帖时必须走 publish_channel，避免把“回复/对话”误投到频道。
+      if (ctx.G.has(graphId)) {
+        const channelAttrs = ctx.G.getChannel(graphId);
+        if (channelAttrs.chat_type === "channel") {
+          ctx.log.info("send_message blocked: target is broadcast channel", { chatId: graphId });
+          return { success: false, error: "cannot speak in channel; use publish_channel" };
+        }
+      }
+
       // 观察窗口检查：新加入的频道需要先静默/学徒
       if (ctx.G.has(graphId)) {
         const channelAttrs = ctx.G.getChannel(graphId);

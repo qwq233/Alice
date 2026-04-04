@@ -15,6 +15,11 @@ import type { WorldModel } from "../graph/world-model.js";
 import { createLogger } from "../utils/logger.js";
 import { fetchAndCacheBio, getCachedBio } from "./bio-cache.js";
 import type { GraphPerturbation } from "./mapper.js";
+import {
+  getIgnoredPrivateChatReason,
+  getIgnoredTelegramPeerReason,
+  isTelegramRepliesPeerId,
+} from "./session-filters.js";
 
 const log = createLogger("events");
 
@@ -255,6 +260,16 @@ export function bindEvents(
     const selfId = getSelfId();
     const tick = getCurrentTick();
 
+    const ignoredChatReason = getIgnoredTelegramPeerReason(
+      {
+        peerId: ctx.chat.id,
+        kind: ctx.chat instanceof User ? "user" : "chat",
+        isBot: ctx.chat instanceof User ? ctx.chat.isBot : false,
+      },
+      selfId,
+    );
+    if (ignoredChatReason) return;
+
     // 跳过自己发的消息——但先缓存 message ID 用于 reply directed 检测
     if (senderId === selfId) {
       cacheOutgoingMsg(channelId, ctx.id);
@@ -265,7 +280,7 @@ export function bindEvents(
     // 关联群组/频道之间的跨 chat 回复会以 Replies 身份投递，
     // 产生幽灵频道 + 虚假 P5 义务 + 发送者身份丢失。
     // Alice 已在原始频道看到真实消息，此处的副本应丢弃。
-    if (senderId === "1271266957") return;
+    if (isTelegramRepliesPeerId(senderId)) return;
 
     const contactId = senderId ? `${CONTACT_PREFIX}${senderId}` : null;
 
@@ -445,11 +460,22 @@ export function bindEvents(
   // 审计修复: 补全 contactId/isDirected/messageText 等字段，
   // 确保 mapper 的 safety_flag 检测和联系人更新正确执行。
   dp.onEditMessage(async (ctx) => {
+    const selfId = getSelfId();
+    const ignoredChatReason = getIgnoredTelegramPeerReason(
+      {
+        peerId: ctx.chat.id,
+        kind: ctx.chat instanceof User ? "user" : "chat",
+        isBot: ctx.chat instanceof User ? ctx.chat.isBot : false,
+      },
+      selfId,
+    );
+    if (ignoredChatReason) return;
+
     // T-6: 过滤自己编辑的消息（与 onNewMessage 一致）
     const senderId = ctx.sender ? String(ctx.sender.id) : null;
-    if (senderId === getSelfId()) return;
+    if (senderId === selfId) return;
     // 跳过 Telegram Replies 系统实体（与 onNewMessage 一致）
-    if (senderId === "1271266957") return;
+    if (isTelegramRepliesPeerId(senderId)) return;
 
     const chatId = String(ctx.chat.id);
     const channelId = `${CHANNEL_PREFIX}${chatId}`;
@@ -462,7 +488,7 @@ export function bindEvents(
     if (ctx.replyToMessage) {
       if (ctx.replyToMessage.sender) {
         const replySender = ctx.replyToMessage.sender;
-        if ("id" in replySender && String(replySender.id) === getSelfId()) {
+        if ("id" in replySender && String(replySender.id) === selfId) {
           isReply = true;
         }
       } else if (ctx.replyToMessage.id != null) {
@@ -479,7 +505,7 @@ export function bindEvents(
             break;
           }
         }
-        if (entity.is("text_mention") && String(entity.params.userId) === getSelfId()) {
+        if (entity.is("text_mention") && String(entity.params.userId) === selfId) {
           isMentioned = true;
           break;
         }
@@ -512,6 +538,8 @@ export function bindEvents(
 
   // 已读历史
   dp.onHistoryRead(async (ctx) => {
+    if (getIgnoredPrivateChatReason(String(ctx.chatId), getSelfId())) return;
+
     const chatId = String(ctx.chatId);
     const channelId = `${CHANNEL_PREFIX}${chatId}`;
     const tick = getCurrentTick();
@@ -526,6 +554,8 @@ export function bindEvents(
   // 用户在线状态
   dp.onUserStatusUpdate(async (ctx) => {
     const userId = String(ctx.userId);
+    if (getIgnoredPrivateChatReason(userId, getSelfId())) return;
+
     const contactId = `${CONTACT_PREFIX}${userId}`;
     const tick = getCurrentTick();
 
@@ -545,8 +575,10 @@ export function bindEvents(
     async (_client, upd, _peers) => {
       const raw = upd as tl.RawUpdateMessageReactions;
       const chatId = String(getMarkedPeerId(raw.peer));
-      const channelId = `${CHANNEL_PREFIX}${chatId}`;
       const selfId = getSelfId();
+      if (getIgnoredPrivateChatReason(chatId, selfId)) return;
+
+      const channelId = `${CHANNEL_PREFIX}${chatId}`;
       const tick = getCurrentTick();
 
       // 从 recentReactions 推断 actor（最近操作者）。
@@ -646,6 +678,8 @@ export function bindEvents(
   // Typing indicator — 用户正在输入
   dp.onUserTyping(async (ctx) => {
     const chatId = String(ctx.chatId);
+    if (getIgnoredPrivateChatReason(chatId, getSelfId())) return;
+
     const channelId = `${CHANNEL_PREFIX}${chatId}`;
     const userId = ctx.userId ? String(ctx.userId) : null;
     const contactId = userId ? `${CONTACT_PREFIX}${userId}` : undefined;
